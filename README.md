@@ -2,36 +2,64 @@
 [![Hardware](https://github.com/KenwoodFox/VendingBackpack/actions/workflows/hardware_workflow.yml/badge.svg)](https://github.com/KenwoodFox/VendingBackpack/actions/workflows/hardware_workflow.yml)
 [![Firmware](https://github.com/KenwoodFox/VendingBackpack/actions/workflows/firmware_workflow.yml/badge.svg)](https://github.com/KenwoodFox/VendingBackpack/actions/workflows/firmware_workflow.yml)
 
-
 # VendingBackpack
 
 ![Banner](Static/Banner.png)
 
-This repo contains all the firmware and hardware for the VendingBackpack.
+VendingBackpack is a monorepo that contains the **hardware**, **firmware**, and **software** needed to develop the VendingBackpack system.
 
-If you're looking for the latest docs/builds, see our [Releases Page](https://github.com/KenwoodFox/VendingBackpack/releases).
+## Repository Layout
 
-# Getting Started
+- `Backend/` — **Backend API** (Ruby on Rails)
+- `Frontend/` — **Frontend App** (Flutter)
+- `docker-compose.yml` — **Docker Stack**: Rails API + Nginx (serving Flutter web)
+- `Firmware/` — PlatformIO Arduino firmware
+- `Hardware/` — KiCad PCB project(s)
+- `CAD/` — FreeCAD models
+- `Docs/` — Documentation and deployment notes
 
-First, clone this repo (and optionally checkout a branch)
+## Prerequisites
 
-```shell
-git clone https://github.com/KenwoodFox/VendingBackpack.git
-cd VendingBackpack
+- Docker Desktop (recommended for running the stack)
+- Flutter SDK with Dart **>= 3.0.0** (if rebuilding the web UI)
+- Ruby **3.3.10** (for local backend development)
+
+## Quick Start
+
+1) Start the stack:
+
+```bash
+docker compose up -d --build
 ```
 
-# Init Submodules
+2) Open:
+- UI: `http://localhost:9100`
+- Backend Health: `http://localhost:9090/health`
 
-Some libraries and resources are included as submodules, run the following
-command to initialize them before opening the main sch
+## Local Development (No Docker)
 
-(If you get a missing library error, make sure to do this)
+### Backend (Rails)
 
-```shell
-git submodule update --init --recursive
+```bash
+cd Backend
+bundle install
+bin/rails server -b 0.0.0.0 -p 9090
 ```
 
+### Frontend (Flutter)
 
-## Project Layout
+```bash
+cd Frontend
+flutter pub get
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9090/api
+```
 
-If you want to use this project template for yourself, you can find it [here!](https://github.com/KenwoodFox/Project-Template)
+## Configuration
+
+The stack uses environment variables for configuration. See `docker-compose.yml` for details.
+- `RAILS_ENV`: set to `production` or `development`
+- `SECRET_KEY_BASE`: required for production mode
+
+## Login Credentials (Default)
+
+- **Admin**: `admin@vbp.com` / `password123`

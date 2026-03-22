@@ -1,0 +1,52 @@
+services:
+  backend:
+    image: ghcr.io/aldervon-systems/vendingbackpack/backend:latest
+    container_name: vending_backpack_backend
+    restart: unless-stopped
+    environment:
+      RAILS_ENV: production
+      PORT: 9090
+      BINDING: 0.0.0.0
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-fe12ec71223c92b31df728b8f8159c44618a53c6121f7537533c6afb8e500550f3c362ba522ef34f6d93dd81932de64b8f7170dabebd6a618ee2f57f1bba5fae}
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./Backend/storage:/rails/storage
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/aldervon-systems/vendingbackpack/frontend-flutter:latest}
+    container_name: vending_frontend
+    restart: unless-stopped
+    ports:
+      - "9100:80"
+    depends_on:
+      - backend
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O - http://localhost/__frontend_health >/dev/null 2>&1 || wget -q -O - http://localhost/health >/dev/null 2>&1
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  landing:
+    image: nginx:alpine
+    container_name: vending_landing
+    restart: unless-stopped
+    expose:
+      - "9060:80"
+    command: >
+      /bin/sh -c "echo '<html><body style="font-family:sans-serif;text-align:center;padding-top:100px;">
+      <h1>Aldervon Systems</h1>
+      <p>Landing Page Online</p>
+      <p><a href="https://app.aldervon.com">Go to App</a></p>
+      </body></html>' > /usr/share/nginx/html/index.html && nginx -g 'daemon off;'"
+
+networks:
+  main_net:
+    external: false
+    name: "aldervon-stack_default"
+
+volumes:
+  backend_storage:

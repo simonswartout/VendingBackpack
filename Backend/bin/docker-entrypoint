@@ -1,0 +1,9 @@
+#!/bin/bash -e
+
+# Hardened persistence always prepares the DB before boot so the mounted
+# storage volume remains the live source of truth in Docker/Portainer.
+if [ "${1}" == "./bin/rails" ] && [ "${2}" == "server" ]; then
+  ./bin/rails db:prepare
+fi
+
+exec "${@}"
