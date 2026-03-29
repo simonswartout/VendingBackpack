@@ -22,6 +22,7 @@ Use these as the current sources of truth:
 - Use [deploy/portainer-stack.production.yml](/C:/GitHub/VendingBackpackv3/deploy/portainer-stack.production.yml) for the live production stack.
 - Use [deploy/portainer-stack.staging.yml](/C:/GitHub/VendingBackpackv3/deploy/portainer-stack.staging.yml) for an isolated staging stack on the same or a separate Docker host.
 - Keep staging and production in separate Portainer stacks with separate variables, volumes, and networks.
+- With host-level Caddy, staging should bind only to loopback host ports so Caddy can proxy to it without exposing those ports publicly.
 
 Suggested stack names:
 - `vending-backpack-production`
@@ -56,11 +57,15 @@ Optional:
 Optional:
 - `LANDING_IMAGE=ghcr.io/aldervon-systems/vendingbackpack/landing:sha-<approved-shortsha>`
 - `RDFM_SERVER_IMAGE=ghcr.io/aldervon-systems/rdfm-server:sha-<approved-shortsha>`
+- `FRONTEND_BIND_ADDRESS=127.0.0.1`
+- `BACKEND_BIND_ADDRESS=127.0.0.1`
+- `LANDING_BIND_ADDRESS=127.0.0.1`
+- `RDFM_BIND_ADDRESS=127.0.0.1`
 - `FRONTEND_HOST_PORT=19100`
 - `BACKEND_HOST_PORT=19101`
 - `LANDING_HOST_PORT=19060`
 - `RDFM_HOST_PORT=15010`
-- `RDFM_FRONTEND_APP_URL=https://staging.api.aldervon.com/device`
+- `RDFM_FRONTEND_APP_URL=https://staging.aldervon.com/device`
 
 ## Validation
 
@@ -72,10 +77,12 @@ After a production deploy, verify:
 - `https://app.aldervon.com/corporate`
 
 After a staging deploy, verify:
-- `http://<docker-host>:19100/__frontend_health`
-- `http://<docker-host>:19100/health`
+- `https://staging.aldervon.com`
+- `http://127.0.0.1:19100/__frontend_health` from the host
+- `http://127.0.0.1:19100/health` from the host
 - login redirects to the existing Keycloak instance
-- `http://<docker-host>:15010` responds for RDFM
+- `https://staging.aldervon.com/device`
+- `http://127.0.0.1:15010` responds for RDFM from the host
 - staging data is isolated from production data
 
 ## Notes

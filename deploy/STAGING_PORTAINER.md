@@ -5,6 +5,7 @@ This stack provides an isolated staging environment for the web application and 
 It intentionally does not modify or replace:
 - Keycloak
 - firmware tooling and related workflows
+- the host-level Caddy configuration
 
 Use [deploy/portainer-stack.staging.yml](/C:/GitHub/VendingBackpackv3/deploy/portainer-stack.staging.yml) as the staging stack contract in Portainer.
 
@@ -12,12 +13,27 @@ Use [deploy/portainer-stack.staging.yml](/C:/GitHub/VendingBackpackv3/deploy/por
 
 - Production and staging should be separate Portainer stacks.
 - Staging should use separate named volumes, network, secrets, and image tags.
-- Route traffic to staging with a dedicated hostname through your existing reverse proxy.
+- Route traffic to staging with a dedicated hostname through your existing host-level Caddy reverse proxy.
 - Promote the same tested image tag from staging to production after verification.
 
 Suggested hostnames:
-- `staging.app.aldervon.com` -> frontend
-- `staging.api.aldervon.com` -> backend and RDFM routes via your reverse proxy
+- `staging.aldervon.com` -> frontend
+- `staging.aldervon.com/device` -> RDFM route via your reverse proxy
+
+## How staging reaches Caddy
+
+Because Caddy runs on the host rather than in Docker, the staging containers still need host port bindings so Caddy has something stable to proxy to.
+
+These bindings are intentionally limited to loopback by default:
+- frontend -> `127.0.0.1:19100`
+- backend -> `127.0.0.1:19101`
+- landing -> `127.0.0.1:19060`
+- RDFM -> `127.0.0.1:15010`
+
+That means:
+- the services are not exposed publicly on all interfaces
+- only processes on the host, such as Caddy, can reach them directly
+- users should access staging through the Cloudflare/Caddy hostname, not by port
 
 ## What stays shared
 
@@ -40,11 +56,15 @@ That means:
 Optional:
 - `LANDING_IMAGE=ghcr.io/aldervon-systems/vendingbackpack/landing:sha-<approved-shortsha>`
 - `RDFM_SERVER_IMAGE=ghcr.io/aldervon-systems/rdfm-server:sha-<approved-shortsha>`
+- `FRONTEND_BIND_ADDRESS=127.0.0.1`
+- `BACKEND_BIND_ADDRESS=127.0.0.1`
+- `LANDING_BIND_ADDRESS=127.0.0.1`
+- `RDFM_BIND_ADDRESS=127.0.0.1`
 - `FRONTEND_HOST_PORT=19100`
 - `BACKEND_HOST_PORT=19101`
 - `LANDING_HOST_PORT=19060`
 - `RDFM_HOST_PORT=15010`
-- `RDFM_FRONTEND_APP_URL=https://staging.api.aldervon.com/device`
+- `RDFM_FRONTEND_APP_URL=https://staging.aldervon.com/device`
 - `RDFM_OAUTH_URL=https://keycloak.aldervon.com/keycloak/realms/master/protocol/openid-connect/token/introspect`
 - `RDFM_OAUTH_CLIENT_ID=rdfm-server-introspection`
 
@@ -55,19 +75,21 @@ Optional:
 3. Paste in [deploy/portainer-stack.staging.yml](/C:/GitHub/VendingBackpackv3/deploy/portainer-stack.staging.yml).
 4. Add the environment variables above in the Portainer UI.
 5. Deploy the stack.
-6. Point your reverse proxy at the staging host ports.
+6. Point your host-level Caddy configuration at the loopback staging ports.
 
 ## Validation checklist
 
 After deploy, verify:
-- `http://<docker-host>:19100/__frontend_health`
-- `http://<docker-host>:19100/health`
+- `https://staging.aldervon.com`
+- `http://127.0.0.1:19100/__frontend_health` from the host
+- `http://127.0.0.1:19100/health` from the host
 - frontend login flow still redirects to the existing Keycloak instance
-- RDFM responds on `http://<docker-host>:15010`
+- `https://staging.aldervon.com/device`
+- RDFM responds on `http://127.0.0.1:15010` from the host
 - staging data is isolated from production data
 
 ## Notes
 
 - This stack avoids `container_name` so production and staging can coexist on the same Docker host.
 - Use pinned image tags for staging. Avoid `:latest` for anything you may need to roll back.
-- If you later move staging behind host-based routing, you can remove most host port exposure and keep only the reverse proxy public.
+- The default staging ports are internal host upstreams for Caddy, not public entrypoints for users.
