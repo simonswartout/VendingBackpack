@@ -8,6 +8,8 @@
 
 VendingBackpack is a monorepo that contains the **hardware**, **firmware**, and **software** needed to develop the VendingBackpack system.
 
+The current production target is the Rails backend plus the `Frontend-Next` web client. The Flutter app remains in the repo as a legacy surface and is no longer treated as the operational release client.
+
 ## Repository Layout
 
 - `Backend/` — **Backend API** (Ruby on Rails)
@@ -27,18 +29,23 @@ VendingBackpack is a monorepo that contains the **hardware**, **firmware**, and 
 
 ## Quick Start
 
-1) Start the stack:
+1. Start the seeded local stack:
 
 ```bash
-docker login ghcr.io
-docker compose up -d --build
+ALLOW_SEED_AUTH=true SEED_DEMO_DATA=true FRONTEND_AUTH_MODE=seed docker compose up -d --build backend frontend
 ```
 
-2) Open:
+2. Open:
 - UI: `http://localhost:9100`
 - Backend Health: `http://localhost:9090/health`
 - Frontend Health: `http://localhost:9100/__frontend_health`
 - Corporate View: `http://localhost:9100/corporate`
+
+3. Use the seeded preview accounts:
+- Manager: `renee@aldervon.com`
+- Employee: `amanda.jones@example.com`
+- Organization search: `Aldervon Systems`
+- Password: any value in `FRONTEND_AUTH_MODE=seed`
 
 ## Local Development (No Docker)
 
@@ -50,7 +57,7 @@ bundle install
 bin/rails server -b 0.0.0.0 -p 9090
 ```
 
-### Frontend (Flutter)
+### Frontend (Flutter, legacy)
 
 ```bash
 cd Frontend
@@ -63,9 +70,14 @@ flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:9090/api
 The stack uses environment variables for configuration. See `docker-compose.yml` for details.
 - `RAILS_ENV`: set to `production` or `development`
 - `SECRET_KEY_BASE`: required for production mode
+- `ALLOW_SEED_AUTH`: enables local seeded bearer tokens for browser validation
+- `SEED_DEMO_DATA`: seeds the local backend on container boot
+- `FRONTEND_AUTH_MODE`: set to `seed` for the seeded preview login flow
 - `FRONTEND_IMAGE`: defaults to `ghcr.io/aldervon-systems/vendingbackpack/frontend-next:latest`
 - `BACKEND_IMAGE`: defaults to `ghcr.io/aldervon-systems/vendingbackpack/backend:latest`
 
-## Login Credentials (Default)
+## Current Release Notes
 
-- **Admin**: `admin@vbp.com` / `password123`
+- Operational contract docs: [Docs/BACKEND_API.md](/Users/crimsonwheeler/Documents/GitHub/VendingBackpack/Docs/BACKEND_API.md)
+- Implementation intention and validation summary: [MASTER_INTENTION_PLAN.md](/Users/crimsonwheeler/Documents/GitHub/VendingBackpack/MASTER_INTENTION_PLAN.md)
+- Data consistency plan and gated checklist: [Docs/data-consistency-plan/master_plan.md](/Users/crimsonwheeler/Documents/GitHub/VendingBackpack/Docs/data-consistency-plan/master_plan.md)

@@ -11,9 +11,9 @@ class Employee < ApplicationRecord
       "location" => location,
       "floor" => floor,
       "building" => building,
-      "is_active" => is_active,
-      "created_at" => created_at,
-      "updated_at" => updated_at
+      "isActive" => is_active,
+      "createdAt" => created_at&.iso8601,
+      "updatedAt" => updated_at&.iso8601
     }
   end
 end

@@ -1,12 +1,16 @@
 services:
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/aldervon-systems/vendingbackpack/backend:latest}
+    build:
+      context: ./Backend
+    image: ${BACKEND_IMAGE:-vendingbackpack/backend:local}
     container_name: vending_backpack_backend
     restart: unless-stopped
     environment:
       RAILS_ENV: production
       PORT: 9090
       BINDING: 0.0.0.0
+      ALLOW_SEED_AUTH: ${ALLOW_SEED_AUTH:-false}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-fe12ec71223c92b31df728b8f8159c44618a53c6121f7537533c6afb8e500550f3c362ba522ef34f6d93dd81932de64b8f7170dabebd6a618ee2f57f1bba5fae}
     ports:
       - "9090:9090"
@@ -14,7 +18,11 @@ services:
       - ./Backend/storage:/rails/storage
 
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/aldervon-systems/vendingbackpack/frontend-next:latest}
+    build:
+      context: ./Frontend-Next
+      args:
+        AUTH_MODE: ${FRONTEND_AUTH_MODE:-api}
+    image: ${FRONTEND_IMAGE:-vendingbackpack/frontend-next:local}
     container_name: vending_frontend
     restart: unless-stopped
     ports:
@@ -24,7 +32,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - wget -q -O - http://localhost/__frontend_health >/dev/null 2>&1 || wget -q -O - http://localhost/health >/dev/null 2>&1
+        - wget -q -O - http://127.0.0.1/__frontend_health >/dev/null 2>&1 || wget -q -O - http://127.0.0.1/health >/dev/null 2>&1
       interval: 30s
       timeout: 5s
       retries: 5

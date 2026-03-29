@@ -2,6 +2,7 @@ require "test_helper"
 
 class AuthParityTest < ActionDispatch::IntegrationTest
   setup do
+    VendingTransaction.delete_all
     Stop.delete_all
     Route.delete_all
     Machine.delete_all
@@ -26,7 +27,7 @@ class AuthParityTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :success
-    assert_equal ["M-600"], json_response.fetch("stops").map { |row| row["id"] }
+    assert_equal ["M-600"], json_response.fetch("stops").map { |row| row["machineId"] }
   end
 
   test "employee route read fails closed when sql employee parity is missing" do

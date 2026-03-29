@@ -46,7 +46,7 @@ export function DashboardScreen() {
       };
     }
 
-    dashboardRepository.getSnapshot(role).then((nextSnapshot) => {
+    dashboardRepository.getSnapshot(role, session?.user.id ?? null, session?.user.name ?? null).then((nextSnapshot) => {
       if (active) {
         setSnapshot(nextSnapshot);
       }
@@ -55,7 +55,7 @@ export function DashboardScreen() {
     return () => {
       active = false;
     };
-  }, [effectiveRole]);
+  }, [effectiveRole, session?.user.id, session?.user.name]);
 
   useEffect(() => {
     let active = true;

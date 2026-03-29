@@ -31,7 +31,7 @@ describe("WarehouseScreen", () => {
     });
     mocks.apiRequest.mockImplementation(async (path: string) => {
       if (path === "/warehouse") {
-        return [{ sku: "SKU-1", name: "Cold Brew", qty: 8, barcode: "111" }];
+        return [{ itemId: 1, sku: "SKU-1", name: "Cold Brew", quantity: 8, barcode: "111" }];
       }
 
       return [];

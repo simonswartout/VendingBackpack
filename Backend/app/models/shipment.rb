@@ -6,11 +6,13 @@ class Shipment < ApplicationRecord
 
   def payload
     {
-      "id" => id.to_s,
+      "id" => id,
       "description" => description,
       "amount" => amount,
-      "date" => scheduled_for.iso8601,
-      "status" => status
+      "scheduledFor" => scheduled_for.iso8601,
+      "status" => status,
+      "createdAt" => created_at&.iso8601,
+      "updatedAt" => updated_at&.iso8601
     }
   end
 end

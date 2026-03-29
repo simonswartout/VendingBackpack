@@ -1,48 +1,126 @@
-# Load fixtures
-employees_json = JSON.parse(File.read(Rails.root.join('data', 'fixtures', 'employees.json')))
-locations_json = JSON.parse(File.read(Rails.root.join('data', 'fixtures', 'locations.json')))
-routes_json = JSON.parse(File.read(Rails.root.join('data', 'fixtures', 'employee_routes.json')))
+employees = [
+  { id: "emp-07", name: "Amanda Jones", color: 0xFF4A90E2, department: "Operations", location: "Downtown Hub", floor: "2", building: "North Tower", is_active: true },
+  { id: "emp-11", name: "Luis Vega", color: 0xFF50E3C2, department: "Operations", location: "Cambridge Node", floor: "1", building: "West Annex", is_active: true },
+  { id: "emp-13", name: "Maya Chen", color: 0xFFF5A623, department: "Field Service", location: "Harbor Depot", floor: "1", building: "Warehouse", is_active: true }
+]
+
+machines = [
+  { id: "M-101", name: "Union Station", lat: 42.3524, lng: -71.0552, location: "Downtown Loop", status: "online", battery: 93, organization_id: "org_aldervon", vin: "VIN-101" },
+  { id: "M-120", name: "North Campus", lat: 42.3651, lng: -71.1040, location: "Cambridge North", status: "online", battery: 88, organization_id: "org_aldervon", vin: "VIN-120" },
+  { id: "M-130", name: "Harbor Point", lat: 42.3473, lng: -71.0386, location: "Harbor District", status: "online", battery: 81, organization_id: "org_aldervon", vin: "VIN-130" },
+  { id: "M-140", name: "Research Annex", lat: 42.3617, lng: -71.0905, location: "Innovation Corridor", status: "attention", battery: 61, organization_id: "org_aldervon", vin: "VIN-140" }
+]
+
+items = [
+  { sku: "cold_brew", name: "Cold Brew", barcode: "111", description: "Chilled coffee can", price: 4.25, slot_number: "A1", warehouse_quantity: 18, is_available: true },
+  { sku: "sparkling_water", name: "Sparkling Water", barcode: "222", description: "Lime sparkling water", price: 2.75, slot_number: "A2", warehouse_quantity: 24, is_available: true },
+  { sku: "protein_bar", name: "Protein Bar", barcode: "333", description: "Chocolate protein bar", price: 3.5, slot_number: "B1", warehouse_quantity: 14, is_available: true },
+  { sku: "trail_mix", name: "Trail Mix", barcode: "444", description: "Roasted almond trail mix", price: 3.95, slot_number: "B2", warehouse_quantity: 10, is_available: true }
+]
+
+machine_inventory_targets = {
+  "M-101" => { "cold_brew" => 4, "protein_bar" => 3 },
+  "M-120" => { "sparkling_water" => 5, "trail_mix" => 2 },
+  "M-130" => { "cold_brew" => 2, "sparkling_water" => 4 },
+  "M-140" => { "protein_bar" => 1, "trail_mix" => 1 }
+}
+
+route_targets = {
+  "emp-07" => ["M-101", "M-130"],
+  "emp-11" => ["M-120"],
+  "emp-13" => ["M-140"]
+}
+
+shipments = [
+  { description: "Downtown restock wave", amount: 48, scheduled_for: Time.zone.now.change(hour: 14, min: 0), status: "scheduled" },
+  { description: "Cambridge emergency refill", amount: 18, scheduled_for: Time.zone.now.change(hour: 17, min: 30), status: "scheduled" }
+]
+
+transactions = [
+  { sku: "cold_brew", machine_id: "M-101", amount: 4.25, payment_method: "card", user_id: "emp-07", completed_at: Time.zone.now.beginning_of_day + 2.hours },
+  { sku: "sparkling_water", machine_id: "M-120", amount: 2.75, payment_method: "card", user_id: "emp-11", completed_at: Time.zone.now.beginning_of_day + 4.hours },
+  { sku: "trail_mix", machine_id: "M-140", amount: 3.95, payment_method: "mobile", user_id: "emp-13", completed_at: Time.zone.now.beginning_of_day + 5.hours + 30.minutes }
+]
 
 puts "Seeding employees..."
-employees_json.each do |data|
-  Employee.find_or_create_by!(id: data['id']) do |e|
-    e.name = data['name']
-    e.color = data['color']
-    e.department = data['department']
-    e.location = data['location']
-    e.floor = data['floor']
-    e.building = data['building']
-    e.is_active = data['is_active']
-  end
+employees.each do |data|
+  employee = Employee.find_or_initialize_by(id: data[:id])
+  employee.assign_attributes(data)
+  employee.save!
 end
 
 puts "Seeding machines..."
-locations_json.each do |data|
-  Machine.find_or_create_by!(id: data['id']) do |m|
-    m.name = data['name']
-    m.lat = data['lat']
-    m.lng = data['lng']
+machines.each do |data|
+  machine = Machine.find_or_initialize_by(id: data[:id])
+  machine.assign_attributes(data)
+  machine.save!
+end
+
+puts "Seeding items..."
+items.each do |data|
+  item = Item.find_or_initialize_by(sku: data[:sku])
+  item.assign_attributes(data)
+  item.save!
+end
+
+puts "Seeding machine inventory..."
+machine_inventory_targets.each do |machine_id, sku_quantities|
+  sku_quantities.each do |sku, quantity|
+    item = Item.find_by!(sku: sku)
+    row = MachineInventory.find_or_initialize_by(machine_id: machine_id, item_id: item.id)
+    row.quantity = quantity
+    row.save!
   end
 end
 
 puts "Seeding routes..."
-routes_json.each do |data|
-  employee = Employee.find_by(id: data['employee_id'])
-  next unless employee
-
+route_targets.each do |employee_id, machine_ids|
+  employee = Employee.find_by!(id: employee_id)
   route = Route.find_or_initialize_by(employee_id: employee.id)
   route.employee = employee
-  route.employee_name = data['employee_name']
-  route.distance_meters = data['distance_meters'] || 0
-  route.duration_seconds = data['duration_seconds'] || 0
+  route.employee_name = employee.name
+  route.distance_meters = 0
+  route.duration_seconds = 0
   route.save!
 
   route.stops.destroy_all
 
-  (data['stops'] || []).each_with_index do |stop_data, index|
-    machine = Machine.find_by(id: stop_data['id'])
-    if machine
-      Stop.create!(route: route, machine: machine, position: index)
-    end
+  machine_ids.each_with_index do |machine_id, index|
+    machine = Machine.find_by!(id: machine_id)
+    route.stops.create!(machine: machine, position: index)
   end
+
+  total_distance = 0
+  stops = route.stops.includes(:machine).order(:position).to_a
+  stops.each_with_index do |stop, index|
+    next if index.zero?
+
+    previous = stops[index - 1].machine
+    current = stop.machine
+    total_distance += Math.sqrt(((previous.lat || 0) - (current.lat || 0))**2 + ((previous.lng || 0) - (current.lng || 0))**2)
+  end
+  route.update!(distance_meters: total_distance.round(2))
+end
+
+puts "Seeding shipments..."
+shipments.each do |data|
+  shipment = Shipment.find_or_initialize_by(description: data[:description], scheduled_for: data[:scheduled_for])
+  shipment.assign_attributes(data)
+  shipment.save!
+end
+
+puts "Seeding transactions..."
+transactions.each do |data|
+  item = Item.find_by!(sku: data[:sku])
+  transaction = VendingTransaction.find_or_initialize_by(
+    item_id: item.id,
+    machine_id: data[:machine_id],
+    completed_at: data[:completed_at]
+  )
+  transaction.slot_number = item.slot_number
+  transaction.amount = data[:amount]
+  transaction.status = VendingTransaction::STATUS_COMPLETED
+  transaction.payment_method = data[:payment_method]
+  transaction.user_id = data[:user_id]
+  transaction.save!
 end

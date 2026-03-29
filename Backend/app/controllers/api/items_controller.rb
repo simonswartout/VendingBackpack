@@ -31,13 +31,13 @@ module Api
 
     def create
       payload = JSON.parse(request.raw_post.presence || "{}")
-      error = validate_payload(payload, required: %w[name price slot_number])
+      error = validate_payload(payload, required: %w[name price slotNumber])
       if error
         render json: { detail: error }, status: :bad_request
         return
       end
 
-      slot_number = payload["slot_number"].to_s
+      slot_number = payload["slotNumber"].to_s
       if slot_number.present? && Item.exists?(slot_number: slot_number)
         render json: { detail: "Slot #{slot_number} is already occupied" }, status: :bad_request
         return
@@ -51,8 +51,8 @@ module Api
 
     def update
       payload = JSON.parse(request.raw_post.presence || "{}")
-      if payload["slot_number"].present? && Item.where(slot_number: payload["slot_number"].to_s).where.not(id: params[:id]).exists?
-        render json: { detail: "Slot #{payload['slot_number']} is already occupied" }, status: :bad_request
+      if payload["slotNumber"].present? && Item.where(slot_number: payload["slotNumber"].to_s).where.not(id: params[:id]).exists?
+        render json: { detail: "Slot #{payload['slotNumber']} is already occupied" }, status: :bad_request
         return
       end
       if payload.key?("price") && payload["price"].to_f <= 0

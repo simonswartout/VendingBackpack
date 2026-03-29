@@ -1,117 +1,177 @@
 # Backend API Documentation
 
-This document describes the Backend API for the Vending Backpack system. The API is built using Ruby on Rails and provides endpoints for authentication, inventory management, transactions, and employee route tracking.
+This document describes the current operational Rails API contract for VendingBackpack. The API is scoped under `/api` and the production operational client is `Frontend-Next`.
 
 ## Base URL
 The API is scoped under `/api`.
 
----
+## Current Operational Shape
+- Runtime authority: Rails + SQL-backed ActiveRecord models
+- Primary operational client: `Frontend-Next`
+- External contract naming: `camelCase`
+- Standard error envelope: `{ "detail": "..." }`
+- Local seeded preview auth: enabled only when `ALLOW_SEED_AUTH=true`
 
-## Container Architecture
+## Local Seeded Stack
 
-The project currently uses the following containers defined in `docker-compose.yml`:
+```bash
+ALLOW_SEED_AUTH=true SEED_DEMO_DATA=true FRONTEND_AUTH_MODE=seed docker compose up -d --build backend frontend
+```
 
-| Service | Container Name | Description | Registry | Port Mapping |
-| :--- | :--- | :--- | :--- | :--- |
-| **Backend** | `vending_backend` | Ruby on Rails API. | `ghcr.io/aldervon-systems/vendingbackpack/backend` | `9090:9090` |
-| **Frontend** | `vending_frontend_new` | Flutter/Dart web client. | `ghcr.io/aldervon-systems/vendingbackpack/frontend` | `8082:80` |
-
-### Legacy Infrastructure
-The project also maintains a `docker-compose-deprecated.yml` for older components:
-- **vending_db**: PostgreSQL 15 database.
-- **vending_backpack_deprecated**: Previous Go-based backend.
-- **vending_frontend**: Previous Flutter web client.
-
----
+Seeded preview accounts:
+- Manager: `renee@aldervon.com`
+- Employee: `amanda.jones@example.com`
+- Organization search: `Aldervon Systems`
+- Password: any value in seed mode
 
 ## Authentication
 
 ### Generate Token
 `POST /api/token`
 
-Authenticates a user and returns an access token.
-
-**Request Body:**
+Request body:
 ```json
 {
   "email": "user@example.com",
-  "password": "password123"
-}
-```
-
-**Response:**
-```json
-{
-  "access_token": "mock_token_1",
-  "token_type": "bearer",
-  "user": {
-    "name": "John Doe",
-    "email": "user@example.com",
-    "role": "admin",
-    "id": 1
-  }
+  "password": "password123",
+  "organization_id": "org_aldervon"
 }
 ```
 
 ### Signup
 `POST /api/signup`
 
-Creates a new user account.
+### Session Identity
+`GET /api/me`
 
-**Request Body:**
-```json
-{
-  "name": "John Doe",
-  "email": "user@example.com",
-  "password": "password123",
-  "role": "employee"
-}
-```
+### Local Seeded Preview Tokens
+When `ALLOW_SEED_AUTH=true`, the backend also accepts seeded bearer tokens for local validation:
+- `seed:session:mgr-01`
+- `seed:session:emp-07`
+- `seed:session:emp-11`
 
-**Response (201 Created):**
-```json
-{
-  "access_token": "mock_token_user_123",
-  "token_type": "bearer",
-  "user": {
-    "name": "John Doe",
-    "email": "user@example.com",
-    "role": "employee",
-    "id": "user_123"
-  }
-}
-```
+## Contract Rules
+- Use `quantity`, never `qty`
+- Use `machineId`, never `machine_id`
+- Use `employeeId`, never `employee_id`
+- Use `slotNumber`, never `slot_number`
+- Manager and employee route payloads share the same base route DTO
 
----
+## Warehouse And Inventory
 
-## Warehouse & Inventory
-
-### Get Warehouse Inventory
+### Warehouse Inventory
 `GET /api/warehouse`
 
-Returns the current consolidated inventory for the warehouse.
+Response shape:
+```json
+[
+  {
+    "itemId": 1,
+    "sku": "cold_brew",
+    "name": "Cold Brew",
+    "quantity": 18,
+    "barcode": "111"
+  }
+]
+```
 
-### Find Item by Barcode
-`GET /api/items/:barcode`
+### Machine Inventory
+`GET /api/inventory`
 
-Finds a specific item using its barcode.
+Response shape:
+```json
+[
+  {
+    "machineId": "M-101",
+    "machineName": "Union Station",
+    "status": "online",
+    "location": "Downtown Loop",
+    "items": [
+      {
+        "itemId": 1,
+        "quantity": 4,
+        "slotNumber": "A1"
+      }
+    ]
+  }
+]
+```
 
-### Get Daily Stats
+### Barcode Lookup
+`GET /api/items/barcode/:barcode`
+
+Response shape:
+```json
+{
+  "id": 1,
+  "sku": "cold_brew",
+  "name": "Cold Brew",
+  "description": "Chilled coffee can",
+  "price": 4.25,
+  "quantity": 18,
+  "slotNumber": "A1",
+  "isAvailable": true,
+  "imageUrl": null,
+  "barcode": "111",
+  "createdAt": "2026-03-29T17:21:56Z",
+  "updatedAt": "2026-03-29T17:21:56Z"
+}
+```
+
+### Daily Stats
 `GET /api/daily_stats`
 
-Returns sales and inventory statistics for the current day.
+Response shape:
+```json
+[
+  {
+    "date": "2026-03-29",
+    "amount": 10.95,
+    "transactionCount": 3
+  }
+]
+```
 
-### Update Inventory
+### Machine Fill / Return
 `POST /api/warehouse/update`
 
-Updates the quantity of a specific SKU for a machine.
+Request params:
+```json
+{
+  "machineId": "M-101",
+  "sku": "cold_brew",
+  "quantity": 4
+}
+```
 
-**Query Parameters:**
-- `machine_id`: The ID of the machine.
-- `sku`: The SKU of the item.
-- `quantity`: The new quantity.
+### Warehouse Add Stock
+`POST /api/warehouse/add_stock`
 
----
+Request params:
+```json
+{
+  "barcode": "111",
+  "name": "Cold Brew",
+  "quantity": 6
+}
+```
+
+### Shipments
+`GET /api/warehouse/shipments`
+`POST /api/warehouse/shipments`
+
+Shipment response shape:
+```json
+{
+  "id": 1,
+  "description": "Cold brew resupply",
+  "amount": 42.5,
+  "scheduledFor": "2026-03-29T18:00:00Z",
+  "status": "scheduled",
+  "createdAt": "2026-03-29T17:21:56Z",
+  "updatedAt": "2026-03-29T17:21:56Z"
+}
+```
 
 ## Items Management
 
@@ -127,16 +187,16 @@ Updates the quantity of a specific SKU for a machine.
 ### Create Item
 `POST /api/items`
 
-**Request Body:**
+Request body:
 ```json
 {
   "name": "Soda",
   "description": "Refreshing drink",
-  "price": 1.50,
-  "slot_number": "A1",
+  "price": 1.5,
+  "slotNumber": "A1",
   "quantity": 10,
-  "is_available": true,
-  "image_url": "http://..."
+  "isAvailable": true,
+  "imageUrl": "http://example.com/image.png"
 }
 ```
 
@@ -145,8 +205,6 @@ Updates the quantity of a specific SKU for a machine.
 
 ### Delete Item
 `DELETE /api/items/:id`
-
----
 
 ## Transactions
 
@@ -159,66 +217,116 @@ Updates the quantity of a specific SKU for a machine.
 ### Create Transaction
 `POST /api/transactions`
 
-**Request Body:**
+Request body:
 ```json
 {
-  "item_id": 1,
-  "amount": 1.50,
-  "payment_method": "card",
-  "user_id": 1
+  "itemId": 1,
+  "machineId": "M-101",
+  "slotNumber": "A1",
+  "amount": 1.5,
+  "paymentMethod": "card",
+  "userId": "emp-07"
+}
+```
+
+Response shape:
+```json
+{
+  "id": 1,
+  "itemId": 1,
+  "itemName": "Cold Brew",
+  "machineId": "M-101",
+  "slotNumber": "A1",
+  "amount": 4.25,
+  "status": "completed",
+  "paymentMethod": "card",
+  "userId": "emp-07",
+  "completedAt": "2026-03-29T17:30:00Z",
+  "refundedAt": null,
+  "createdAt": "2026-03-29T17:30:00Z",
+  "updatedAt": "2026-03-29T17:30:00Z"
 }
 ```
 
 ### Refund Transaction
 `POST /api/transactions/:id/refund`
 
----
-
 ## Machines
 
 ### List Machines
 `GET /api/machines`
 
-### Get Machine Details
-`GET /api/machines/:id`
+Response shape:
+```json
+{
+  "id": "M-101",
+  "name": "Union Station",
+  "vin": "VIN-101",
+  "organizationId": "org_aldervon",
+  "status": "online",
+  "battery": 93,
+  "lat": 42.3524,
+  "lng": -71.0552,
+  "location": "Downtown Loop",
+  "createdAt": "2026-03-29T17:21:56Z",
+  "updatedAt": "2026-03-29T17:21:56Z"
+}
+```
 
----
-
-## Employees & Routes
+## Employees And Routes
 
 ### List Employees
 `GET /api/employees`
 
-### Get Employee Details
-`GET /api/employees/:id`
-
 ### List All Employee Routes
 `GET /api/employees/routes`
 
-### Get Routes for Employee
+### Get Routes For Employee
 `GET /api/employees/:id/routes`
 
-### Assign Machine to Route
+Canonical route shape:
+```json
+{
+  "id": 1,
+  "employeeId": "emp-07",
+  "employeeName": "Amanda Jones",
+  "distanceMeters": 1234.56,
+  "durationSeconds": 0,
+  "stops": [
+    {
+      "machineId": "M-130",
+      "name": "Harbor Point",
+      "lat": 42.3473,
+      "lng": -71.0386,
+      "location": "Harbor District",
+      "position": 0
+    }
+  ],
+  "createdAt": "2026-03-29T17:21:56Z",
+  "updatedAt": "2026-03-29T17:21:56Z"
+}
+```
+
+### Assign Machine To Route
 `POST /api/employees/:id/routes/assign`
 
-Adds a machine to the employee's route using a nearest-neighbor heuristic.
-
-**Query Parameters:**
-- `machine_id`: The ID of the machine to assign.
+Request params:
+```json
+{
+  "machineId": "M-101"
+}
+```
 
 ### Update Route Stops
 `PUT /api/employees/:id/routes/stops`
 
-Updates the entire ordered list of stops for an employee.
-
-**Request Body:**
+Request body:
 ```json
 {
-  "stop_ids": ["machine_1", "machine_2", "machine_3"]
+  "stopIds": ["M-130", "M-101"]
 }
 ```
 
----
-
-## Data Source
-The API currently uses mock fixtures and an in-memory `MutableStore` for data persistence during development.
+## Current Data Authority
+- Operational inventory, routes, shipments, and transactions use SQL-backed models.
+- Fixture helpers remain for seed and compatibility support, but they are no longer the live authority for the operational flows documented here.

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ParityCard } from "@/components/parity/parity-card";
+import type { EmployeeDto, MachineDto, RouteDto } from "@/lib/api/contracts/operations";
 import { apiRequest } from "@/lib/api/api-client";
 import { useAuth } from "@/providers/auth-provider";
 import type { RouteMachine } from "@/features/routes/components/route-map-canvas";
@@ -18,52 +19,45 @@ const baseEmployees = [
   { id: "all", name: "ALL NODES" },
 ];
 
-function buildEmployeeLookup(employees: Array<{ id: string; name: string }>) {
+function buildEmployeeLookup(employees: Array<Pick<EmployeeDto, "id" | "name">>) {
   return new Map(employees.map((employee) => [employee.id, employee.name]));
 }
 
-function buildEmployeeOptions(employees: Array<{ id: string; name: string }>) {
+function buildEmployeeOptions(employees: Array<Pick<EmployeeDto, "id" | "name">>) {
   return employees.length
     ? [...baseEmployees, ...employees.map((employee) => ({ id: employee.id, name: employee.name }))]
     : baseEmployees;
 }
 
-function buildAssignmentMap(
-  routes: Array<{ employee_id?: string; employeeId?: string; employee_name?: string; stops?: Array<{ id: string }> }>,
-  employeeLookup: Map<string, string>,
-) {
+function buildAssignmentMap(routes: RouteDto[], employeeLookup: Map<string, string>) {
   const assignmentMap = new Map<string, string>();
 
   routes.forEach((route) => {
-    const routeEmployeeId = route.employee_id ?? route.employeeId ?? "";
-    const employeeName = route.employee_name ?? employeeLookup.get(routeEmployeeId) ?? "Assigned";
-    route.stops?.forEach((stop) => {
-      assignmentMap.set(stop.id, employeeName);
+    const employeeName = route.employeeName || employeeLookup.get(route.employeeId) || "Assigned";
+    route.stops.forEach((stop) => {
+      assignmentMap.set(stop.machineId, employeeName);
     });
   });
 
   return assignmentMap;
 }
 
-function normalizeLocations(
-  backendLocations: Array<{ id: string; name: string; lat: number; lng: number; location?: string }>,
-  assignmentMap: Map<string, string>,
-): RouteMachine[] {
-  if (!backendLocations.length) {
+function normalizeLocations(backendMachines: MachineDto[], assignmentMap: Map<string, string>): RouteMachine[] {
+  if (!backendMachines.length) {
     return [];
   }
 
-  return backendLocations.map((location) => {
-    return {
-      id: location.id,
-      name: location.name,
-      lat: location.lat,
-      lng: location.lng,
-      zone: location.location ?? "Assigned node",
+  return backendMachines
+    .filter((machine) => typeof machine.lat === "number" && typeof machine.lng === "number")
+    .map((machine) => ({
+      id: machine.id,
+      name: machine.name,
+      lat: machine.lat ?? 0,
+      lng: machine.lng ?? 0,
+      zone: machine.location ?? "Assigned node",
       serviceWindow: "Pending",
-      assignedTo: assignmentMap.get(location.id) ?? "Unassigned",
-    };
-  });
+      assignedTo: assignmentMap.get(machine.id) ?? "Unassigned",
+    }));
 }
 
 export function RoutesScreen() {
@@ -84,15 +78,15 @@ export function RoutesScreen() {
       setError("");
 
       try {
-        const [routesResult, employeesResult] = await Promise.allSettled([
-          apiRequest<{ locations?: Array<{ id: string; name: string; lat: number; lng: number; location?: string }>; paths?: unknown[] }>("/routes"),
-          apiRequest<Array<{ id: string; name: string }>>("/employees"),
+        const [machinesResult, employeesResult] = await Promise.allSettled([
+          apiRequest<MachineDto[]>("/machines"),
+          apiRequest<EmployeeDto[]>("/employees"),
         ]);
         const nextErrors: string[] = [];
-        const routesResponse =
-          routesResult.status === "fulfilled"
-            ? routesResult.value
-            : (nextErrors.push("route map"), { locations: [] });
+        const machinesResponse =
+          machinesResult.status === "fulfilled"
+            ? machinesResult.value
+            : (nextErrors.push("route map"), []);
         const employeesResponse =
           employeesResult.status === "fulfilled"
             ? employeesResult.value
@@ -104,17 +98,15 @@ export function RoutesScreen() {
 
         if (isManager) {
           try {
-            const allRoutes = await apiRequest<Array<{ employee_id?: string; employeeId?: string; employee_name?: string; stops?: Array<{ id: string }> }>>(
-              "/employees/routes",
-            );
+            const allRoutes = await apiRequest<RouteDto[]>("/routes");
             assignmentMap = buildAssignmentMap(allRoutes, employeeLookup);
           } catch {
             nextErrors.push("route assignments");
           }
         } else if (session?.user.id) {
           try {
-            const currentRouteResponse = await apiRequest<{ stops?: Array<{ id: string }> }>(`/employees/${session.user.id}/routes`);
-            currentRouteStops = currentRouteResponse.stops?.map((stop) => stop.id) ?? [];
+            const currentRouteResponse = await apiRequest<RouteDto>(`/employees/${session.user.id}/routes`);
+            currentRouteStops = currentRouteResponse.stops.map((stop) => stop.machineId);
             currentRouteStops.forEach((stopId) => {
               assignmentMap.set(stopId, session?.user.name ?? "You");
             });
@@ -123,7 +115,7 @@ export function RoutesScreen() {
           }
         }
 
-        const backendLocations = normalizeLocations(routesResponse.locations ?? [], assignmentMap);
+        const backendLocations = normalizeLocations(machinesResponse ?? [], assignmentMap);
 
         if (active) {
           setAssignments(backendLocations);
@@ -150,7 +142,7 @@ export function RoutesScreen() {
     return () => {
       active = false;
     };
-  }, [isManager, session?.user.id]);
+  }, [isManager, session?.user.id, session?.user.name]);
 
   const visibleLocations = useMemo(() => {
     if (!isManager) {
@@ -191,13 +183,13 @@ export function RoutesScreen() {
 
     try {
       await apiRequest("/routes/autogenerate", { method: "POST" });
-      const [nextLocations, nextAllRoutes] = await Promise.all([
-        apiRequest<{ locations?: Array<{ id: string; name: string; lat: number; lng: number; location?: string }> }>("/routes"),
-        apiRequest<Array<{ employee_id?: string; employeeId?: string; employee_name?: string; stops?: Array<{ id: string }> }>>("/employees/routes"),
+      const [nextMachines, nextRoutes] = await Promise.all([
+        apiRequest<MachineDto[]>("/machines"),
+        apiRequest<RouteDto[]>("/routes"),
       ]);
       const employeeLookup = buildEmployeeLookup(selectableEmployees);
-      const assignmentMap = buildAssignmentMap(nextAllRoutes, employeeLookup);
-      setAssignments(normalizeLocations(nextLocations.locations ?? [], assignmentMap));
+      const assignmentMap = buildAssignmentMap(nextRoutes, employeeLookup);
+      setAssignments(normalizeLocations(nextMachines ?? [], assignmentMap));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Route autogeneration failed");
     } finally {
@@ -211,13 +203,18 @@ export function RoutesScreen() {
     try {
       await apiRequest(`/employees/${employeeId}/routes/assign`, {
         method: "POST",
-        body: { machine_id: machineId },
+        body: { machineId },
       });
 
+      const allRoutes = await apiRequest<RouteDto[]>("/routes");
+      const employeeLookup = buildEmployeeLookup(selectableEmployees);
+      const assignmentMap = buildAssignmentMap(allRoutes, employeeLookup);
+
       setAssignments((currentAssignments) =>
-        currentAssignments.map((machine) =>
-          machine.id === machineId ? { ...machine, assignedTo: employees.find((employee) => employee.id === employeeId)?.name ?? machine.assignedTo } : machine,
-        ),
+        currentAssignments.map((machine) => ({
+          ...machine,
+          assignedTo: assignmentMap.get(machine.id) ?? "Unassigned",
+        })),
       );
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Assignment failed");

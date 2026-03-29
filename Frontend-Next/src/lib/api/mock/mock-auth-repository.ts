@@ -1,3 +1,4 @@
+import { clearAccessToken, setAccessToken } from "@/lib/api/api-client";
 import { SESSION_TTL_MS, STORAGE_KEYS } from "@/lib/constants";
 import { getStoredValue, removeStoredValue, setStoredValue } from "@/lib/storage";
 import {
@@ -42,6 +43,7 @@ function delay<T>(value: T, ms = 420): Promise<T> {
 export class MockAuthRepository implements AuthRepository {
   async restoreSession(): Promise<SessionState | null> {
     const session = getStoredValue<SessionState>(STORAGE_KEYS.session, { validate: isSessionState });
+    setAccessToken(session?.accessToken ?? null);
     return delay(session, 560);
   }
 
@@ -58,6 +60,7 @@ export class MockAuthRepository implements AuthRepository {
     });
 
     setStoredValue(STORAGE_KEYS.session, nextSession, { ttlMs: SESSION_TTL_MS });
+    setAccessToken(nextSession.accessToken);
     return delay(nextSession);
   }
 
@@ -74,11 +77,13 @@ export class MockAuthRepository implements AuthRepository {
     });
 
     setStoredValue(STORAGE_KEYS.session, nextSession, { ttlMs: SESSION_TTL_MS });
+    setAccessToken(nextSession.accessToken);
     return delay(nextSession);
   }
 
   async logout(): Promise<void> {
     removeStoredValue(STORAGE_KEYS.session);
+    clearAccessToken();
     return delay(undefined, 180);
   }
 
@@ -96,6 +101,7 @@ export class MockAuthRepository implements AuthRepository {
     };
 
     setStoredValue(STORAGE_KEYS.session, nextSession, { ttlMs: SESSION_TTL_MS });
+    setAccessToken(nextSession.accessToken);
     return delay(nextSession, 220);
   }
 
@@ -112,6 +118,7 @@ export class MockAuthRepository implements AuthRepository {
 
     const remaining = new Date(session.expiresAt).getTime() - Date.now();
     setStoredValue(STORAGE_KEYS.session, nextSession, { ttlMs: Math.max(remaining, 1) });
+    setAccessToken(nextSession.accessToken);
     return delay(nextSession, 120);
   }
 
@@ -156,7 +163,7 @@ export class MockAuthRepository implements AuthRepository {
 
 function createSession({ user }: { user: SessionUser }): SessionState {
   return {
-    accessToken: "mock_token",
+    accessToken: `seed:session:${user.id}`,
     user,
     roleOverride: null,
     adminVerified: false,

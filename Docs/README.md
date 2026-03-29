@@ -1,6 +1,8 @@
 ## Documentation Links
 
 - [Backend API Documentation](BACKEND_API.md)
+- [Master Intention Plan](../MASTER_INTENTION_PLAN.md)
+- [Data Consistency Master Plan](data-consistency-plan/master_plan.md)
 
 ## Building the Docs
 

@@ -2,6 +2,7 @@ require "test_helper"
 
 class WarehouseHardeningTest < ActionDispatch::IntegrationTest
   setup do
+    VendingTransaction.delete_all
     WarehouseMovement.delete_all
     MachineInventory.delete_all
     Shipment.delete_all
@@ -22,7 +23,7 @@ class WarehouseHardeningTest < ActionDispatch::IntegrationTest
     payload = json_response
     assert_equal 2, payload.length
     assert_equal ["Chips", "Water"], payload.map { |row| row["name"] }
-    assert_equal [0, 5], payload.map { |row| row["qty"] }
+    assert_equal [0, 5], payload.map { |row| row["quantity"] }
   end
 
   test "adding stock persists through subsequent reads" do
@@ -31,13 +32,14 @@ class WarehouseHardeningTest < ActionDispatch::IntegrationTest
          headers: manager_headers
 
     assert_response :success
+    assert_equal 4, json_response.fetch("quantity")
 
     get "/api/warehouse", headers: manager_headers
     assert_response :success
 
     row = json_response.find { |entry| entry["barcode"] == "333" }
     assert_not_nil row
-    assert_equal 4, row["qty"]
+    assert_equal 4, row["quantity"]
 
     movement = WarehouseMovement.order(:id).last
     assert_equal "warehouse_receive", movement.movement_type
@@ -50,14 +52,14 @@ class WarehouseHardeningTest < ActionDispatch::IntegrationTest
     machine = Machine.create!(id: "M-101", name: "Machine 101", lat: 1.0, lng: 2.0)
 
     post "/api/warehouse/update",
-         params: { machine_id: machine.id, sku: item.sku, quantity: 3 }.to_json,
+         params: { machineId: machine.id, sku: item.sku, quantity: 3 }.to_json,
          headers: manager_headers
 
     assert_response :success
     assert_equal(
       {
         "status" => "success",
-        "machine_id" => machine.id,
+        "machineId" => machine.id,
         "sku" => item.sku,
         "quantity" => 3
       },
@@ -68,7 +70,8 @@ class WarehouseHardeningTest < ActionDispatch::IntegrationTest
 
     get "/api/inventory", headers: manager_headers
     assert_response :success
-    assert_equal 3, json_response.fetch(machine.id).first.fetch("qty")
+    machine_snapshot = json_response.find { |row| row["machineId"] == machine.id }
+    assert_equal 3, machine_snapshot.fetch("items").first.fetch("quantity")
   end
 
   test "machine quantity update rejects fill when warehouse stock is insufficient" do
@@ -76,7 +79,7 @@ class WarehouseHardeningTest < ActionDispatch::IntegrationTest
     machine = Machine.create!(id: "M-102", name: "Machine 102", lat: 3.0, lng: 4.0)
 
     post "/api/warehouse/update",
-         params: { machine_id: machine.id, sku: item.sku, quantity: 3 }.to_json,
+         params: { machineId: machine.id, sku: item.sku, quantity: 3 }.to_json,
          headers: manager_headers
 
     assert_response :unprocessable_entity
@@ -98,7 +101,7 @@ class WarehouseHardeningTest < ActionDispatch::IntegrationTest
       "organization_id" => "org_aldervon"
     ) do
       post "/api/warehouse/update",
-           params: { machine_id: machine.id, sku: item.sku, quantity: 2 }.to_json,
+           params: { machineId: machine.id, sku: item.sku, quantity: 2 }.to_json,
            headers: employee_headers(user_id: employee.id)
     end
 
@@ -121,7 +124,7 @@ class WarehouseHardeningTest < ActionDispatch::IntegrationTest
       "organization_id" => "org_aldervon"
     ) do
       post "/api/warehouse/update",
-           params: { machine_id: other_machine.id, sku: item.sku, quantity: 1 }.to_json,
+           params: { machineId: other_machine.id, sku: item.sku, quantity: 1 }.to_json,
            headers: employee_headers(user_id: employee.id)
     end
 
@@ -140,7 +143,7 @@ class WarehouseHardeningTest < ActionDispatch::IntegrationTest
       "organization_id" => "org_aldervon"
     ) do
       post "/api/warehouse/update",
-           params: { machine_id: machine.id, sku: item.sku, quantity: 1 }.to_json,
+           params: { machineId: machine.id, sku: item.sku, quantity: 1 }.to_json,
            headers: employee_headers(user_id: "missing_employee")
     end
 

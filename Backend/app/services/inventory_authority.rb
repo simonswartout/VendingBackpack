@@ -7,26 +7,18 @@ class InventoryAuthority
 
   class << self
     def warehouse_inventory
-      Item.order(:name, :sku).map(&:warehouse_payload)
+      Item.order(:name, :sku).map(&:inventory_payload)
     end
 
     def machine_inventory
-      Machine.order(:name, :id).each_with_object({}) do |machine, result|
-        rows = machine.machine_inventories.joins(:item).includes(:item).order("items.name ASC, items.sku ASC")
-        result[machine.id] = rows.map do |row|
-          {
-            "sku" => row.item.sku,
-            "name" => row.item.name,
-            "qty" => row.quantity,
-            "barcode" => row.item.barcode.to_s
-          }
-        end
+      Machine.order(:name, :id).includes(machine_inventories: :item).map do |machine|
+        machine_inventory_snapshot(machine)
       end
     end
 
     def find_item_by_barcode(barcode)
       item = Item.find_by(barcode: barcode.to_s.strip)
-      item ? item.warehouse_payload : {}
+      item&.payload
     end
 
     def find_item_by_sku!(sku)
@@ -54,7 +46,7 @@ class InventoryAuthority
         )
       end
 
-      item.warehouse_payload
+      item.inventory_payload
     rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique => e
       raise InventoryError, e.message
     end
@@ -67,8 +59,6 @@ class InventoryAuthority
       raise InventoryError, "Machine not found" unless machine
 
       item = find_item_by_sku!(sku)
-      existing_items = nil
-
       Item.transaction do
         item.lock!
         inventory = MachineInventory.lock.find_or_initialize_by(machine_id: machine.id, item_id: item.id)
@@ -76,7 +66,6 @@ class InventoryAuthority
         delta = target_qty - current_qty
 
         if delta.zero?
-          existing_items = machine_inventory[machine.id]
           next
         end
 
@@ -98,7 +87,7 @@ class InventoryAuthority
         )
       end
 
-      existing_items || machine_inventory[machine.id]
+      machine_inventory_snapshot(machine.reload)
     rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique => e
       raise InventoryError, e.message
     end
@@ -120,17 +109,17 @@ class InventoryAuthority
     end
 
     def items_index
-      Item.order(:name, :sku).map(&:item_payload)
+      Item.order(:name, :sku).map(&:payload)
     end
 
     def find_item(id)
       item = Item.find_by(id: id)
-      item&.item_payload
+      item&.payload
     end
 
     def find_item_by_slot(slot_number)
       item = Item.find_by(slot_number: slot_number.to_s)
-      item&.item_payload
+      item&.payload
     end
 
     def create_item!(payload)
@@ -142,9 +131,9 @@ class InventoryAuthority
           description: payload["description"],
           price: payload.fetch("price", 0).to_f,
           warehouse_quantity: quantity,
-          slot_number: payload["slot_number"],
-          is_available: payload.key?("is_available") ? !!payload["is_available"] : true,
-          image_url: payload["image_url"],
+          slot_number: payload["slotNumber"],
+          is_available: payload.key?("isAvailable") ? ActiveModel::Type::Boolean.new.cast(payload["isAvailable"]) : true,
+          image_url: payload["imageUrl"],
           barcode: payload["barcode"].presence
         )
 
@@ -158,7 +147,7 @@ class InventoryAuthority
           )
         end
 
-        item.item_payload
+        item.payload
       end
     rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique => e
       raise InventoryError, e.message
@@ -178,9 +167,9 @@ class InventoryAuthority
           name: payload.key?("name") ? payload["name"].to_s : item.name,
           description: payload.key?("description") ? payload["description"] : item.description,
           price: payload.key?("price") ? payload["price"].to_f : item.price,
-          slot_number: payload.key?("slot_number") ? payload["slot_number"] : item.slot_number,
-          is_available: payload.key?("is_available") ? !!payload["is_available"] : item.is_available,
-          image_url: payload.key?("image_url") ? payload["image_url"] : item.image_url,
+          slot_number: payload.key?("slotNumber") ? payload["slotNumber"] : item.slot_number,
+          is_available: payload.key?("isAvailable") ? ActiveModel::Type::Boolean.new.cast(payload["isAvailable"]) : item.is_available,
+          image_url: payload.key?("imageUrl") ? payload["imageUrl"] : item.image_url,
           barcode: payload.key?("barcode") ? payload["barcode"].presence : item.barcode,
           warehouse_quantity: next_qty
         )
@@ -196,7 +185,7 @@ class InventoryAuthority
           )
         end
 
-        item.item_payload
+        item.payload
       end
     rescue ActiveRecord::RecordNotFound
       raise InventoryError, "Item with id #{id} not found"
@@ -225,7 +214,107 @@ class InventoryAuthority
       raise InventoryError, e.message
     end
 
+    def transactions
+      VendingTransaction.order(completed_at: :desc, id: :desc).includes(:item).map(&:payload)
+    end
+
+    def find_transaction(id)
+      transaction = VendingTransaction.includes(:item).find_by(id: id)
+      transaction&.payload
+    end
+
+    def create_transaction!(payload)
+      item_id = payload["itemId"].to_i
+      raise InventoryError, "itemId is required" if item_id <= 0
+
+      machine_id = payload["machineId"].to_s.strip
+      raise InventoryError, "machineId is required" if machine_id.blank?
+
+      item = Item.find_by(id: item_id)
+      raise InventoryError, "Item #{item_id} not found" unless item
+
+      amount = payload["amount"].presence ? payload["amount"].to_f : item.price.to_f
+      raise InventoryError, "amount must be greater than 0" unless amount.positive?
+
+      transaction = nil
+
+      Item.transaction do
+        inventory = MachineInventory.lock.find_by(machine_id: machine_id, item_id: item.id)
+        raise InventoryError, "Machine inventory row not found" unless inventory
+        raise InventoryError, "Item #{item.name} is not available" if inventory.quantity.to_i <= 0
+
+        inventory.update!(quantity: inventory.quantity.to_i - 1)
+        transaction = VendingTransaction.create!(
+          item: item,
+          machine_id: machine_id,
+          slot_number: payload["slotNumber"].presence || item.slot_number,
+          amount: amount,
+          status: VendingTransaction::STATUS_COMPLETED,
+          payment_method: payload["paymentMethod"],
+          user_id: payload["userId"],
+          completed_at: Time.current
+        )
+      end
+
+      transaction.payload
+    rescue ActiveRecord::RecordInvalid => e
+      raise InventoryError, e.message
+    end
+
+    def refund_transaction!(id)
+      transaction = VendingTransaction.includes(:item).find_by(id: id)
+      raise InventoryError, "Transaction #{id} not found" unless transaction
+      raise InventoryError, "Transaction already refunded" if transaction.status == VendingTransaction::STATUS_REFUNDED
+
+      Item.transaction do
+        if transaction.machine_id.present?
+          inventory = MachineInventory.lock.find_or_initialize_by(machine_id: transaction.machine_id, item_id: transaction.item_id)
+          inventory.quantity = inventory.quantity.to_i + 1
+          inventory.save!
+        end
+
+        transaction.update!(
+          status: VendingTransaction::STATUS_REFUNDED,
+          refunded_at: Time.current
+        )
+      end
+
+      transaction.reload.payload
+    rescue ActiveRecord::RecordInvalid => e
+      raise InventoryError, e.message
+    end
+
+    def daily_stats
+      base_date = Time.zone.today
+
+      (0..6).map do |offset|
+        date = base_date - (6 - offset)
+        rows = VendingTransaction.where(completed_at: date.beginning_of_day..date.end_of_day)
+        amount = rows.sum do |transaction|
+          transaction.status == VendingTransaction::STATUS_REFUNDED ? -transaction.amount.to_f : transaction.amount.to_f
+        end
+
+        {
+          "date" => date.iso8601,
+          "amount" => amount.round(2),
+          "transactionCount" => rows.count
+        }
+      end
+    end
+
     private
+
+    def machine_inventory_snapshot(machine)
+      rows = machine.machine_inventories.joins(:item).includes(:item).order("items.name ASC, items.sku ASC")
+
+      {
+        "machineId" => machine.id,
+        "machineName" => machine.name,
+        "status" => machine.status,
+        "location" => machine.location,
+        "items" => rows.map(&:payload)
+      }
+    end
 
     def find_or_create_item!(barcode:, name:)
       normalized_barcode = barcode.to_s.strip
@@ -254,7 +343,10 @@ class InventoryAuthority
     end
 
     def parse_time!(value)
-      Time.zone.parse(value.to_s)
+      parsed = Time.zone.parse(value.to_s)
+      raise InventoryError, "Invalid date" unless parsed
+
+      parsed
     rescue ArgumentError, TypeError
       raise InventoryError, "Invalid date"
     end

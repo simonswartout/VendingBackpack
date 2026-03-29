@@ -7,29 +7,15 @@ import { ParityCard } from "@/components/parity/parity-card";
 import { ParityField } from "@/components/parity/parity-field";
 import { ParityModalFrame } from "@/components/parity/parity-modal-frame";
 import { ParityOverlay } from "@/components/parity/parity-overlay";
+import type { ItemDto, ShipmentDto, WarehouseInventoryRowDto } from "@/lib/api/contracts/operations";
 import { apiRequest } from "@/lib/api/api-client";
 import { useAuth } from "@/providers/auth-provider";
-
-type InventoryRow = {
-  sku: string;
-  name: string;
-  qty: number;
-  barcode: string;
-};
-
-type ShipmentRow = {
-  id: string;
-  description: string;
-  amount: number;
-  date: string;
-  status: string;
-};
 
 export function WarehouseScreen() {
   const { effectiveRole } = useAuth();
   const isManager = effectiveRole === "manager";
-  const [inventoryRows, setInventoryRows] = useState<InventoryRow[]>([]);
-  const [shipments, setShipments] = useState<ShipmentRow[]>([]);
+  const [inventoryRows, setInventoryRows] = useState<WarehouseInventoryRowDto[]>([]);
+  const [shipments, setShipments] = useState<ShipmentDto[]>([]);
   const [shipmentsOpen, setShipmentsOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -46,8 +32,8 @@ export function WarehouseScreen() {
     setError("");
 
     const [warehouseResult, shipmentResult] = await Promise.allSettled([
-      apiRequest<InventoryRow[]>("/warehouse"),
-      isManager ? apiRequest<ShipmentRow[]>("/warehouse/shipments") : Promise.resolve([]),
+      apiRequest<WarehouseInventoryRowDto[]>("/warehouse"),
+      isManager ? apiRequest<ShipmentDto[]>("/warehouse/shipments") : Promise.resolve([]),
     ]);
 
     const nextErrors: string[] = [];
@@ -90,7 +76,7 @@ export function WarehouseScreen() {
       let resolvedName = itemName.trim();
 
       if (barcode.trim()) {
-        const lookup = await apiRequest<{ sku?: string; name?: string; qty?: number }>(`/items/${barcode.trim()}`);
+        const lookup = await apiRequest<ItemDto>(`/items/barcode/${barcode.trim()}`);
         if (!resolvedName && lookup?.name) {
           resolvedName = lookup.name;
           setItemName(lookup.name);
@@ -155,7 +141,7 @@ export function WarehouseScreen() {
         body: {
           description: description.trim(),
           amount,
-          date: new Date().toISOString(),
+          scheduledFor: new Date().toISOString(),
           status: "scheduled",
         },
       });
@@ -194,7 +180,7 @@ export function WarehouseScreen() {
                 </div>
               </div>
               <div className="warehouse-list__qty">
-                <strong>{row.qty}</strong>
+                <strong>{row.quantity}</strong>
                 <span>UNITS</span>
               </div>
             </ParityCard>
@@ -228,7 +214,7 @@ export function WarehouseScreen() {
                   <div key={shipment.id} className="sheet-panel__row">
                     <div>
                       <strong>{shipment.description.toUpperCase()}</strong>
-                      <div>{shipment.date}</div>
+                      <div>{shipment.scheduledFor}</div>
                     </div>
                     <div className="sheet-panel__amount">
                       <strong>{shipment.amount}</strong>

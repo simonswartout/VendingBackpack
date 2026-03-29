@@ -25,9 +25,6 @@ jobs:
           - image_name: backend
             context: ./Backend
             dockerfile: ./Backend/Dockerfile
-          - image_name: frontend-flutter
-            context: ./Frontend
-            dockerfile: ./Frontend/Dockerfile
           - image_name: frontend-next
             context: ./Frontend-Next
             dockerfile: ./Frontend-Next/Dockerfile

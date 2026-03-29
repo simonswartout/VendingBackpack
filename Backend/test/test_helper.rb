@@ -24,9 +24,14 @@ class ActionDispatch::IntegrationTest
       real_api.respond_to?(name, include_private)
     end
 
-    Fixtures::MockApi.stub(:new, fake_api) do
-      yield
+    original_new = Fixtures::MockApi.method(:new)
+    Fixtures::MockApi.define_singleton_method(:new) do |*_args, **_kwargs, &_block|
+      fake_api
     end
+
+    yield
+  ensure
+    Fixtures::MockApi.define_singleton_method(:new, original_new)
   end
 
   def manager_headers

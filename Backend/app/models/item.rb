@@ -9,16 +9,17 @@ class Item < ApplicationRecord
   validates :barcode, uniqueness: true, allow_blank: true
   validates :warehouse_quantity, numericality: { greater_than_or_equal_to: 0 }
 
-  def warehouse_payload
+  def inventory_payload
     {
+      "itemId" => id,
       "sku" => sku,
       "name" => name,
-      "qty" => warehouse_quantity,
-      "barcode" => barcode.to_s
+      "quantity" => warehouse_quantity,
+      "barcode" => barcode
     }
   end
 
-  def item_payload
+  def payload
     {
       "id" => id,
       "sku" => sku,
@@ -26,12 +27,12 @@ class Item < ApplicationRecord
       "description" => description,
       "price" => price.to_f,
       "quantity" => warehouse_quantity,
-      "slot_number" => slot_number,
-      "is_available" => is_available,
-      "image_url" => image_url,
+      "slotNumber" => slot_number,
+      "isAvailable" => is_available,
+      "imageUrl" => image_url,
       "barcode" => barcode,
-      "created_at" => created_at,
-      "updated_at" => updated_at
+      "createdAt" => created_at&.iso8601,
+      "updatedAt" => updated_at&.iso8601
     }
   end
 

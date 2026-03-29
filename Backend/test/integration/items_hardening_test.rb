@@ -2,6 +2,7 @@ require "test_helper"
 
 class ItemsHardeningTest < ActionDispatch::IntegrationTest
   setup do
+    VendingTransaction.delete_all
     WarehouseMovement.delete_all
     MachineInventory.delete_all
     Item.delete_all
@@ -22,11 +23,13 @@ class ItemsHardeningTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal [item.id], json_response.map { |row| row["id"] }
 
-    get "/api/items/888", headers: manager_headers
+    get "/api/items/barcode/888", headers: manager_headers
     assert_response :success
     assert_equal "sparkling_water", json_response.fetch("sku")
     assert_equal "Sparkling Water", json_response.fetch("name")
-    assert_equal 12, json_response.fetch("qty")
+    assert_equal 12, json_response.fetch("quantity")
+    assert_equal "B5", json_response.fetch("slotNumber")
+    assert_equal true, json_response.fetch("isAvailable")
   end
 
   test "updating item quantity persists and records a warehouse adjustment" do

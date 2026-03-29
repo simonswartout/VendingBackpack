@@ -27,11 +27,11 @@ Rails.application.routes.draw do
 
     get "/items", to: "api/items#index"
     post "/items", to: "api/items#create"
+    get "/items/barcode/:barcode", to: "api/warehouse#item"
     get "/items/slot/:slot_number", to: "api/items#slot"
     get "/items/:id", to: "api/items#show", constraints: { id: /\d+/ }
     put "/items/:id", to: "api/items#update", constraints: { id: /\d+/ }
     delete "/items/:id", to: "api/items#destroy", constraints: { id: /\d+/ }
-    get "/items/:barcode", to: "api/warehouse#item"
 
     get "/transactions", to: "api/transactions#index"
     get "/transactions/:id", to: "api/transactions#show", constraints: { id: /\d+/ }

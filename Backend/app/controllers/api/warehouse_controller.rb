@@ -14,15 +14,20 @@ module Api
 
     def item
       barcode = params[:barcode].to_s
-      render json: InventoryAuthority.find_item_by_barcode(barcode)
+      item = InventoryAuthority.find_item_by_barcode(barcode)
+      if item
+        render json: item
+      else
+        render json: { detail: "Item with barcode #{barcode} not found" }, status: :not_found
+      end
     end
 
     def daily_stats
-      render json: Fixtures::MockApi.new.daily_stats
+      render json: InventoryAuthority.daily_stats
     end
 
     def update_inventory
-      machine_id = params[:machine_id]
+      machine_id = params[:machineId]
       sku = params[:sku]
       new_qty = params[:quantity].to_i
       ensure_employee_parity!
@@ -34,7 +39,7 @@ module Api
       end
 
       InventoryAuthority.set_machine_quantity(machine_id: machine_id, sku: sku, quantity: new_qty)
-      render json: { status: "success", machine_id: machine_id, sku: sku, quantity: new_qty }
+      render json: { status: "success", machineId: machine_id, sku: sku, quantity: new_qty }
     rescue InventoryAuthority::InventoryError => e
       render json: { detail: e.message }, status: :unprocessable_entity
     end
@@ -45,7 +50,7 @@ module Api
       qty = params[:quantity].to_i
 
       item = InventoryAuthority.add_stock(barcode: barcode, name: name, quantity: qty)
-      render json: { status: "success", barcode: item["barcode"], name: item["name"], quantity: qty }
+      render json: item
     rescue InventoryAuthority::InventoryError => e
       render json: { detail: e.message }, status: :unprocessable_entity
     end
@@ -58,7 +63,7 @@ module Api
       shipment = InventoryAuthority.create_shipment!(
         description: params[:description],
         amount: params[:amount],
-        scheduled_for: params[:date] || Time.now.iso8601,
+        scheduled_for: params[:scheduledFor] || Time.now.iso8601,
         status: params[:status]
       )
       render json: shipment

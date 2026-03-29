@@ -18,38 +18,40 @@ module Api
     end
 
     def routes_index
-      render json: Route.all
+      render json: Route.includes(stops: :machine).order(:employee_name, :employee_id).map(&:payload)
     end
 
     def routes_for
+      employee = Employee.find_by(id: params[:id])
+      unless employee
+        render json: { detail: "Employee not found" }, status: :not_found
+        return
+      end
+
       route = Route.find_by(employee_id: params[:id])
-      render json: route || { stops: [] }
+      render json: route ? route.payload : Route.empty_payload(employee)
     end
 
     def assign_route
       employee_id = params[:id].to_s
-      machine_id = params[:machine_id].to_s
+      machine_id = params[:machineId].to_s
 
       machine = Machine.find_by(id: machine_id)
       unless machine
-        return render json: { error: "Location not found" }, status: :not_found
+        return render json: { detail: "Machine not found" }, status: :not_found
       end
 
       employee = Employee.find_by(id: employee_id)
       unless employee
-        return render json: { error: "Employee not found" }, status: :not_found
+        return render json: { detail: "Employee not found" }, status: :not_found
       end
 
-      route = Route.find_or_create_by!(employee_id: employee_id) do |r|
-        r.employee_name = employee.name
-      end
+      route = find_or_initialize_route_for(employee)
 
-      # Check if already assigned
       if route.stops.exists?(machine_id: machine_id)
-        return render json: route
+        return render json: route.payload
       end
 
-      # Add new stop with Insertion Heuristic
       new_stop_data = { "lat" => machine.lat, "lng" => machine.lng }
       stops_list = route.stops.map { |s| { "lat" => s.machine.lat, "lng" => s.machine.lng, "id" => s.machine_id } }
 
@@ -74,51 +76,44 @@ module Api
           end
         end
 
-        # Bump positions of existing stops
         route.stops.where("position >= ?", best_index).update_all("position = position + 1")
         route.stops.create!(machine: machine, position: best_index)
       end
 
-      # Recalculate distance
       update_route_distance(route)
-      
-      render json: route.reload
+
+      render json: route.reload.payload
     end
 
     def update_stops
       employee_id = params[:id].to_s
-      stop_ids = params[:stop_ids] || []
+      stop_ids = params[:stopIds] || []
 
       employee = Employee.find_by(id: employee_id)
-      return render json: { error: "Employee not found" }, status: :not_found unless employee
+      return render json: { detail: "Employee not found" }, status: :not_found unless employee
 
-      route = Route.find_or_create_by!(employee_id: employee_id) do |r|
-        r.employee_name = employee.name
-      end
+      route = find_or_initialize_route_for(employee)
 
-      # Clear and rebuild stops
       route.stops.destroy_all
-      
+
       stop_ids.each_with_index do |sid, index|
         machine = Machine.find_by(id: sid)
         route.stops.create!(machine: machine, position: index) if machine
       end
 
       update_route_distance(route)
-      
-      render json: route.reload
+
+      render json: route.reload.payload
     end
 
     def autogenerate_all
       all_machines = Machine.all
       active_employees = Employee.where(is_active: true)
-      
-      # 1. Clear existing routes
+
       Route.destroy_all
-      
+
       generated_routes = []
-      
-      # 2. Assign machines to nearest employee
+
       all_machines.each do |machine|
         next if machine.id == "W-01"
 
@@ -135,21 +130,19 @@ module Api
           )
           generated_routes << route
         end
-        
-        # Add temporarily for sorting
+
         route.stops.build(machine: machine, position: route.stops.length)
       end
 
-      # 3. Sort stops and save
       generated_routes.each do |route|
         next if route.stops.empty?
-        
+
         sorted_stops = []
         emp = route.employee
         current_pos = Machine.find_by(name: emp.location) || all_machines.first
-        
+
         remaining = route.stops.to_a
-        route.stops.delete_all # Clear built ones
+        route.stops.delete_all
 
         while remaining.any?
           next_stop_rec = remaining.min_by { |s| dist(current_pos.as_json, s.machine.as_json) }
@@ -164,8 +157,8 @@ module Api
 
         update_route_distance(route)
       end
-      
-      render json: { status: "success", routes: Route.all }
+
+      render json: { status: "success", routes: Route.includes(stops: :machine).order(:employee_name, :employee_id).map(&:payload) }
     end
 
     private
@@ -188,8 +181,15 @@ module Api
       route.update!(distance_meters: total_dist.round(2))
     end
 
+    def find_or_initialize_route_for(employee)
+      route = Route.find_or_initialize_by(employee_id: employee.id)
+      route.employee = employee
+      route.employee_name = employee.name
+      route.save! if route.new_record? || route.changed?
+      route
+    end
+
     def dist(p1, p2)
-      # p1 and p2 are expected to be hashes or model as_json results
       Math.sqrt(((p1["lat"] || 0) - (p2["lat"] || 0))**2 + ((p1["lng"] || 0) - (p2["lng"] || 0))**2)
     end
   end
