@@ -87,7 +87,8 @@ services:
 
 networks:
   staging_net:
-    name: ${STACK_NETWORK_NAME:-vending-backpack-staging-net}
+    name: aldervon-stack_default
+    external: true
 
 volumes:
   backend_storage_staging:
